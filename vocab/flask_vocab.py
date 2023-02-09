@@ -5,7 +5,11 @@ from a scrambled string)
 """
 
 import flask
+from flask import jsonify
+from flask import request
 import logging
+import os
+import configparser
 
 # Our modules
 from src.letterbag import LetterBag
@@ -58,15 +62,6 @@ def index():
     return flask.render_template('vocab.html')
 
 
-@app.route("/keep_going")
-def keep_going():
-    """
-    After initial use of index, we keep the same scrambled
-    word and try to get more matches
-    """
-    flask.g.vocab = WORDS.as_list()
-    return flask.render_template('vocab.html')
-
 
 @app.route("/success")
 def success():
@@ -79,7 +74,7 @@ def success():
 #   a JSON request handler
 #######################
 
-@app.route("/_check", methods=["POST"])
+@app.route("/_check", methods=["GET"])
 def check():
     """
     User has submitted the form with a word ('attempt')
@@ -92,7 +87,8 @@ def check():
     app.logger.debug("Entering check")
 
     # The data we need, from form and from cookie
-    text = flask.request.form["attempt"]
+    #text = flask.request.form["attempt"]
+    text = request.args.get("text", type=str)
     jumble = flask.session["jumble"]
     matches = flask.session.get("matches", [])  # Default to empty list
 
@@ -100,28 +96,42 @@ def check():
     in_jumble = LetterBag(jumble).contains(text)
     matched = WORDS.has(text)
 
+    #creating Dictionary for different result variables all initialized to 0 (False)
+    result = {"match": 0, "notMatch": 0, "notCompliant": 0, "alreadyFound": 0, "complete": 0}
+
+    message = "" #this will correspond with the html file 
+    
+
     # Respond appropriately
     if matched and in_jumble and not (text in matches):
         # Cool, they found a new word
         matches.append(text)
         flask.session["matches"] = matches
+        result["match"] = 1
+
     elif text in matches:
-        flask.flash("You already found {}".format(text))
+        result["alreadyFound"] = 1 #by changing to 1 its essentially now TRUE 
+        return flask.jsonify(result=result, message=message)
+
     elif not matched:
-        flask.flash("{} isn't in the list of words".format(text))
+        result["notMatch"] = 1
+        #returns a result and message which then the html file takes care of printing said message
+        return flask.jsonify(result=result, message=message)
+    
     elif not in_jumble:
-        flask.flash(
-            '"{}" can\'t be made from the letters {}'.format(text, jumble))
+        result["notCompliant"] = 1
+        return flask.jsonify(result=result, message=message)
     else:
         app.logger.debug("This case shouldn't happen!")
         assert False  # Raises AssertionError
 
-    # Choose page:  Solved enough, or keep going?
-    if len(matches) >= flask.session["target_count"]:
-       return flask.redirect(flask.url_for("success"))
-    else:
-       return flask.redirect(flask.url_for("keep_going"))
+    if len(matches) == flask.session["target_count"]:
+        #if the length of matches list is equal to the value of the target count value 
+        # update complete value to 1 (true) and then return via jsonify result to html 
+        result["complete"] = 1
+        return flask.jsonify(result=result)
 
+    return flask.jsonify(result=result)
 
 ###############
 # AJAX request handlers
@@ -176,10 +186,32 @@ def error_403(e):
 
 #############
 
+
+def parse_config(config_paths):
+    config_path = None
+    for f in config_paths:
+        if os.path.isfile(f):
+            config_path = f
+            break
+
+    if config_path is None:
+        raise RuntimeError("Configuration file not found!")
+
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    return config
+
 if __name__ == "__main__":
+
+    config = parse_config(["credentials.ini", "default.ini"])
+    port1 = config["SERVER"]["PORT"]
+    debug1 = config["SERVER"]["DEBUG"]
+
     if CONFIG.DEBUG:
         app.debug = True
         app.logger.setLevel(logging.DEBUG)
         app.logger.info(
             "Opening for global access on port {}".format(CONFIG.PORT))
-    app.run(port=CONFIG.PORT, host="0.0.0.0", debug=CONFIG.DEBUG)
+    
+    app.run(port=port1, host="0.0.0.0", debug=debug1)
+    #app.run(port=CONFIG.PORT, host="0.0.0.0", debug=CONFIG.DEBUG)

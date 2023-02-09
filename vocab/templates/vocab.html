@@ -73,31 +73,89 @@
          <br />
          <div class="row">
             <div class="col-xs-6 text-center">
-               <form id="entry" method="POST" action="/_check">
                   <label for="attempt">Word:</label>
                   <input id="attempt" name="attempt" type="text" width="15"
                      autocomplete="off"  autofocus />
-                  <input type="submit" name="try" />
-               </form>
+                  <!-- <input type="submit" name="try" />  COMMENT: got rid of the "submit" button     -->
             </div>
          </div>
-         <br />
-         {% if session.matches|length is not equalto 0  %}
+         <br /> 
          <h2>You found </h2>
          <p id="results">
-            {% for match in session.matches %}
-            {{ match }}
-            {% endfor %}
          </p>
-         {% endif %}
-         {% with messages = get_flashed_messages() %}
-         {% if messages %}
          <!-- Mismatch, already found, etc. "flashed" from Python -->
-         {% for message in messages %}
-         <p class="message">{{ message }}</p>
-         {% endfor %}
-         {% endif %}
-         {% endwith %}
+         <!-- <p class="message">{{ message }}</p> -->
+         <p id="message">{{ message }}</p> <!--changed type from class to id in order to be 
+                                             compatible with my "#message" call in function(data)-->
+         <script>
+            // Suppress normal form submission
+            $("#entry").submit( function(event) {
+               event.preventDefault();
+              });
+
+            // On each keystroke, ask the server whether the current
+            // word is long enough.
+            //
+            // We use 'keyup' because the form value
+            // is updated before that event is generated.
+            // keypress is triggered before the input field has been
+            // updated.  Be aware that we'll see non-character keys like
+            // shift and control, so make sure whatever you do with the
+            // event does not depend on it being a letter.
+            //
+            $("#attempt").keyup(function(event) {
+               var txt = $("#attempt").val();  // Current content of the input field
+               var keycode = event.which;      // They key that just went up
+               var letter = String.fromCharCode(keycode);
+
+               // That letter might not be a letter ... it could be the
+               // the backspace key, or even the shift key, because 'keyup'
+               // catches all kinds of keys.  (Also, the difference between
+               // upper and lower case comes from state of shift key + key code,
+               // so ignoring the shift key we get only the upper case letters.
+
+               if (! "ABCDEFGHIJKLMNOPQRSTUVWXYZ".includes(letter)) { return }
+
+               $.getJSON( "/_check", { text: txt }, 
+                  function(data) {
+                     console.log(data);
+                           // create const variables for all the scenerios 
+                           const match = data.result.match;
+                           const notMatch = data.result.notMatch;
+                           const notCompliant = data.result.notCompliant;
+                           const alreadyFound = data.result.alreadyFound;
+                           const complete = data.result.complete;
+
+                           if(match){
+                                 $("#message").html("Word found!");
+                                 $("#results").append(txt + " ");
+                                 $("#attempt").val("");//clears input box in game 
+                           }
+
+                           else if (notMatch){
+                              // displays text if notMatch ==1
+                              $("#message").html("Word is not in Word bank");
+                           }
+                           else if(alreadyFound){
+                              //displays text if alreadtFound ==1
+                              $("#message").html("Word has already been found!");
+                           }
+
+                           else if(notCompliant){
+                              //displays text if notCompliant ==1
+                              $("#message").html("Word cannot be made with provided letters");
+                           }
+                           if(complete) {
+                              //redirects page to the success.html file
+                              //no message required to be displayed 
+                              // $("#message").html("Congrats you win!!");
+                              window.location.href = "/success";
+                        }
+                     }
+                  );
+               });
+
+            </script>
       </div>
       <!-- container -->
    </body>
